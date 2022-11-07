@@ -79,7 +79,8 @@
 - [x] Zookeeper 3.7.0  
 - [x] RocketMQ 4.9.0  
 - [x] FastDFS 5.11  
-- [x] Redis 3.2.8  
+- [x] Redis 3.2.8, 6.x.x  
+- [x] MySQL 5.7.x  
 
 ### 经典脚本案例
 
