@@ -81,6 +81,7 @@
 - [x] FastDFS 5.11  
 - [x] Redis 3.2.8, 6.x.x  
 - [x] MySQL 5.7.x  
+- [x] Nacos 2.2.3  
 
 ### 经典脚本案例
 
