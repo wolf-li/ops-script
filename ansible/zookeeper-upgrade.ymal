@@ -1,0 +1,116 @@
+- hosts: old-zookeeper
+  gather_facts: False
+  tasks:
+    - name: Find the latest two files
+      find:
+        paths: /data/zookeeper/data/version-2
+        file_type: file
+        #age: -60m
+        #age_stamp: mtime
+        patterns:
+          - 'log.*'
+      register: latest_files
+
+    - name: Set files list as global variable
+      set_fact:
+        global_file_files: "{{ latest_files  }}"
+
+    - name: get latest_files as global variable
+      set_fact:
+        log_last_file : "{{  hostvars['old-zookeeper']['global_file_files']['files'] | sort(attribute='mtime', reverse=true) | list | first }}"
+
+    - name: Print the latest files variable
+      debug:
+        msg: "{{ log_last_file.path }}"
+
+    - name: Copy the latest two files
+      fetch:
+        src: "{{ log_last_file.path }}"
+        dest: /tmp/test/
+        flat: true
+
+    - name: Find the  snap latest two files
+      find:
+        paths: /data/zookeeper/data/version-2
+        file_type: file
+        #age: -60m
+        #age_stamp: mtime
+        patterns:
+          - 'snapshot.*'
+      register: latest_files
+
+    - name: Set snap files list as global variable
+      set_fact:
+        global_file_files: "{{ latest_files  }}"
+
+    - name: get snap latest_files as global variable
+      set_fact:
+        log_last_file : "{{  hostvars['old-zookeeper']['global_file_files']['files'] | sort(attribute='mtime', reverse=true) | list | first }}"
+
+    - name: Print the snap latest file variable
+      debug:
+        msg: "{{ log_last_file.path }}"
+
+    - name: Copy the snap latest file
+      fetch:
+        src: "{{ log_last_file.path }}"
+        dest: /tmp/test/
+        flat: true
+
+- name: check the systemd service is alive
+  hosts: zookeeper
+  gather_facts: False
+  tasks:
+    - name: stop service
+      systemd:
+        name: zookeeper
+        state: stopped
+
+    - name: empty the remote server dir
+      shell:
+        cmd: "rm -rf /data/zookeeper/data/version-2/*"
+
+    - name: copy file to remote server
+      vars:
+        filename: /tmp/test/*
+      copy:
+        src: "{{ item }}"
+        dest: /data/zookeeper/data/version-2
+        owner: zk
+        group: zk
+      with_fileglob:
+        - "{{ filename }}"
+
+    - name: start service
+      systemd:
+        name: zookeeper
+        state: started
+
+- name: get new zookeeper response
+  hosts: contral-server
+  tasks:
+    - name: get new zookeeper response
+      uri:
+        url: http://new-zookeeper-ip:8080/commands/ruok
+        method: GET
+        return_content: yes
+      register: curl_response
+
+    - name: format new zookeeper response to json
+      set_fact:
+        json_data: "{{ curl_response.json }}"
+
+    - name: judge the error value is None
+      block:
+        - name: 发送邮件
+          mail:
+            host: email-server
+            port: email-server-port
+            username: email-username
+            password: email-password
+            subject: "zookeeper 单机迁移到集群"
+            body: "zookeeper 单机迁移到集群:成功"
+            from: email-username
+            to: ['your-email']
+          delegate_to: localhost
+      when: json_data.error == None
