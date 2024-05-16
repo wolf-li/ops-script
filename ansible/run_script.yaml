@@ -1,0 +1,33 @@
+# date: 2023-1-5
+# auth: wolf-li
+# version:0.1
+# description: copy script to remote host and run it
+# usage:
+#   ansible-playbook -e "env=1.1.1.1  scriptname=test.sh" test.yml
+---
+- vars:
+    script_dir: /root/script
+    script_dest_dir: /tmp/
+  hosts: "{{ env }}"
+  gather_facts: false
+  ignore_errors: yes
+  tasks:
+  - name: copy script
+    copy:
+      src: "{{ script_dir }}/{{ scriptname }}"
+      dest: "{{ script_dest_dir }}"
+      group: root
+      owner: root
+      mode: 0700
+
+  - name: run script
+    shell: /bin/bash "{{script_dest_dir}}{{ scriptname }}"
+    register: shell_result
+
+  - debug:
+      var: shell_result.stdout_lines
+
+  - name: remove script
+    file:
+      path: "{{script_dest_dir}}{{ scriptname }}"
+      state: absent
