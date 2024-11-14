@@ -4,4 +4,5 @@
 :: version: v0.0.1
 :: description: create mulit file such as 1.docx 2.docx ...
 
+@echo off
 for /l %%y in (0,1,10) do echo "" 2> %%y".docx"
