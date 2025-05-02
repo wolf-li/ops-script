@@ -2,11 +2,11 @@
 
 # 脚本名称: build_gcc.sh
 # 描述: 构建 GCC，支持 macOS 和其他 Unix-like 系统
-# 作者: [您的名字]
-# 日期: 2023-10-20
+# 作者: wolf-li
+# 日期: 2025-05-02
 
 # 全局变量
-GCC_VERSION="14.2.0"
+GCC_VERSION="15.1.0"
 GMP_VERSION="6.2.1"
 MPFR_VERSION="4.1.0"
 MPC_VERSION="1.2.1"
@@ -62,8 +62,19 @@ download_file() {
     local count=0
 
     info "正在下载 $filename 从 $url..."
+
+    # ✅ 检查文件是否已存在
+    if [ -f "$filename" ]; then
+        info "文件 $filename 已存在，跳过下载。"
+        return 0
+    fi
+
+    # 📁 确保目标目录存在（可选增强）
+    mkdir -p "$(dirname "$filename")" 2>/dev/null
+
     while [ $count -lt $retries ]; do
-        if curl -O "$url"; then
+        # ✅ 使用 -o 指定输出文件名（原代码中 filename 参数未被使用）
+        if curl -o "$filename" -L "$url"; then
             return 0
         fi
         count=$((count + 1))
@@ -73,12 +84,43 @@ download_file() {
     error "无法下载 $filename，已重试 $retries 次。"
 }
 
+
 # 函数: 解压文件
 extract_file() {
     local filename=$1
     info "正在解压 $filename..."
-    tar -xzf "$filename" || error "解压 $filename 失败。"
+
+    if [[ "$filename" == *.tar.gz || "$filename" == *.tgz ]]; then
+        tar -zxvf "$filename"
+    elif [[ "$filename" == *.tar.bz2 ]]; then
+        tar -jxvf "$filename"
+    elif [[ "$filename" == *.tar.xz ]]; then
+        tar -Jxvf "$filename"
+    elif [[ "$filename" == *.gz ]]; then
+        gunzip "$filename"
+    elif [[ "$filename" == *.bz2 ]]; then
+        bunzip2 "$filename"
+    elif [[ "$filename" == *.xz ]]; then
+        unxz "$filename"
+    elif [[ "$filename" == *.zip ]]; then
+        unzip "$filename"
+    elif [[ "$filename" == *.rar ]]; then
+        unrar x "$filename"
+    elif [[ "$filename" == *.7z ]]; then
+        7z x "$filename"
+    elif [[ "$filename" == *.tar ]]; then
+        tar -xvf "$filename"
+    else
+        error "不支持的压缩格式: $filename"
+        return 1
+    fi
+
+    if [ $? -ne 0 ]; then
+        error "解压 $filename 失败。"
+        return 1
+    fi
 }
+
 
 # 函数: 创建符号链接
 create_symlink() {
@@ -111,16 +153,16 @@ main() {
 
     # 步骤 2: 下载源代码
     info "步骤 2: 下载源代码..."
-    download_file "https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.gz" "gcc-${GCC_VERSION}.tar.gz"
-    download_file "https://ftp.gnu.org/gnu/gmp/gmp-${GMP_VERSION}.tar.gz" "gmp-${GMP_VERSION}.tar.gz"
+    download_file "https://mirror.nju.edu.cn/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.gz" "gcc-${GCC_VERSION}.tar.gz"
+    download_file "https://mirror.nju.edu.cn/gnu/gmp/gmp-${GMP_VERSION}.tar.xz" "gmp-${GMP_VERSION}.tar.xz"
     download_file "https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.gz" "mpfr-${MPFR_VERSION}.tar.gz"
-    download_file "http://www.multiprecision.org/downloads/mpc-${MPC_VERSION}.tar.gz" "mpc-${MPC_VERSION}.tar.gz"
-    download_file "http://isl.gforge.inria.fr/isl-${ISL_VERSION}.tar.gz" "isl-${ISL_VERSION}.tar.gz"
+    download_file "https://www.multiprecision.org/downloads/mpc-${MPC_VERSION}.tar.gz" "mpc-${MPC_VERSION}.tar.gz"
+    download_file "https://libisl.sourceforge.io/isl-${ISL_VERSION}.tar.gz" "isl-${ISL_VERSION}.tar.gz"
 
     # 步骤 3: 准备源代码
     info "步骤 3: 准备源代码..."
     extract_file "gcc-${GCC_VERSION}.tar.gz"
-    extract_file "gmp-${GMP_VERSION}.tar.gz"
+    extract_file "gmp-${GMP_VERSION}.tar.xz"
     extract_file "mpfr-${MPFR_VERSION}.tar.gz"
     extract_file "mpc-${MPC_VERSION}.tar.gz"
     extract_file "isl-${ISL_VERSION}.tar.gz"
@@ -137,6 +179,7 @@ main() {
     mkdir -p "${BUILD_DIR}"
     cd "${BUILD_DIR}" || error "无法进入 ${BUILD_DIR} 目录。"
     ../"${SRC_DIR}"/configure --prefix="${INSTALL_DIR}" \
+	--enable-lto \
         --enable-languages=c,c++ \
         --disable-multilib || error "配置失败，请检查 config.log 获取详细信息。"
 
@@ -168,7 +211,15 @@ main() {
     if [[ "$(uname)" == "Darwin" && -f "$HOME/.zshrc" ]]; then
         shell_config="$HOME/.zshrc"
     fi
+    # 设置 GCC 15 为默认编译器
     echo "export PATH=\"${INSTALL_DIR}/bin:\$PATH\"" >> "$shell_config"
+    # 优先使用 lib64 的 64 位库
+    echo "export LD_LIBRARY_PATH=\"${INSTALL_DIR}/lib64:\$LD_LIBRARY_PATH" >> "$shell_config"
+    # 编译时链接新库
+    echo "export LIBRARY_PATH=\"${INSTALL_DIR}/lib64:\$LIBRARY_PATH\"" >> "$shell_config"
+    # 头文件搜索路径
+    echo "export C_INCLUDE_PATH=\"${INSTALL_DIR}/include:\$C_INCLUDE_PATH\"" >> "$shell_config"
+    echo "export CXX_INCLUDE_PATH=\"${INSTALL_DIR}/include:\$CXX_INCLUDE_PATH\"" >> "$shell_config"
     source "$shell_config" || warning "刷新 shell 配置失败，请手动执行 'source $shell_config'。"
 
     # 编译并运行测试程序
